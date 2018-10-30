@@ -37,6 +37,7 @@ npm run proxy
 ```
 
 ## Build and deploy to aws lamda
+- Make sure you have **yarn**, could use `npm i -g yarn to install`
 - **ONLY works in linux**, you could run local dev server in any os, but aws lamda is in linux x64, some dependencies need to be prebuilt and upload to lamda, so need the build process in linux x64, you could do it in ci or any linux server/destop env.
 - Create a bucket in aws s3 console, and upload `bin/database.json` to it, so you can set proper env in `.env` and `dist/serverless.yml`, read https://serverless.com/framework/docs/providers/aws/guide/serverless.yml/ for more about `serverless.yml`.
 
@@ -72,7 +73,6 @@ edit `dist/serverless.yml`, make sure you set proper name and required env
 ```
 
 ```bash
-# make sure you have yarn, could use `npm i -g yarn to install`
 # then run this cmd to deploy to aws lamda, full build, may take more time
 npm run deploy
 

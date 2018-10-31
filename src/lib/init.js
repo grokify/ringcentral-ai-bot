@@ -28,8 +28,8 @@ export default async () => {
   // init users
   for (const k of R.keys(store.users)) {
     const user = store.users[k]
-    await user.renewWebHooks()
     await user.refresh()
+    await user.renewWebHooks()
   }
 
   store.lastInitTime = + new Date()

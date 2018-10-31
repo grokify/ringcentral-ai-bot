@@ -96,6 +96,7 @@ export default function init() {
       pathParameters: ctx.params
     }
     let res = await bot(event)
+    console.log('res', res)
     if (res.headers) {
       ctx.set(res.headers)
     }

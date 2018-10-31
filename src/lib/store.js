@@ -1,6 +1,6 @@
 import SubX from 'subx'
 import RingCentral from 'ringcentral-js-concise'
-import { debounceTime } from 'rxjs/operators'
+//import { debounceTime } from 'rxjs/operators'
 import * as R from 'ramda'
 import { processMail } from './voicemail-reader'
 import { read, write } from './database'
@@ -39,8 +39,48 @@ const Store = new SubX({
   }
 })
 
+
+// load data from database
+export const getStore = async () => {
+
+  // load database from S3
+  const database = await read()
+  let store = new Store(database)
+  let throttle = 30 * 60 * 1000
+
+  // init bots
+  for (const k of R.keys(store.bots)) {
+    const bot = new Bot(store.bots[k])
+    let now = + new Date()
+    store.bots[k] = bot
+    if (now - bot.lastRenewTime > throttle) {
+      await bot.validate()
+      await bot.renewWebHooks()
+    }
+  }
+
+  // init users
+  for (const k of R.keys(store.users)) {
+    const user = new User(store.users[k])
+    store.users[k] = user
+    let now = + new Date()
+    if (now - user.lastRenewTime > throttle) {
+      await user.refresh()
+      await user.renewWebHooks()
+    }
+  }
+
+  // auto save to database
+  SubX.autoRun(store, async () => {
+    await write(store)
+  })
+
+  return store
+}
+
 // Bot
 export const Bot = new SubX({
+  lastRenewTime: 0,
   get rc () {
     const rc = new RingCentral(
       process.env.RINGCENTRAL_BOT_CLIENT_ID,
@@ -85,6 +125,7 @@ export const Bot = new SubX({
       for (let sub of filtered) {
         await this.delSubscription(sub.id)
       }
+      this.lastRenewTime = + new Date()
     } catch (e) {
       log('bot renewWebHooks error', e.response.data)
     }
@@ -121,6 +162,7 @@ export const Bot = new SubX({
       log('Bot validate', e.response.data)
       const errorCode = e.response.data.errorCode
       if (errorCode === 'OAU-232' || errorCode === 'CMN-405') {
+        let store = await getStore()
         delete store.bots[this.token.owner_id]
         log(`Bot user ${this.token.owner_id} has been deleted`)
         return false
@@ -131,6 +173,7 @@ export const Bot = new SubX({
 
 // User
 export const User = new SubX({
+  lastRenewTime: 0,
   groups: {},
   get rc () {
     const rc = new RingCentral(
@@ -159,8 +202,10 @@ export const User = new SubX({
     try {
       await this.rc.refresh()
       this.token = this.rc.token()
+      this.lastRenewTime = + new Date()
     } catch(e) {
       log('User try refresh token', e.response.data)
+      let store = await getStore()
       delete store.users[this.token.owner_id]
       log(`User ${this.token.owner_id} refresh token has expired`)
     }
@@ -182,6 +227,7 @@ export const User = new SubX({
             ? e.response.data
             : e
         )
+        let store = await getStore()
         delete store.users[this.token.owner_id]
         log(`User ${this.token.owner_id} refresh token has expired`)
         return false
@@ -201,6 +247,7 @@ export const User = new SubX({
       for (let sub of filtered) {
         await this.delSubscription(sub.id)
       }
+      this.lastRenewTime = + new Date()
     } catch (e) {
       log('user renewWebHooks error', e.response.data)
     }
@@ -277,6 +324,7 @@ export const User = new SubX({
   async sendVoiceMailInfo (processedMailInfo = '') {
     for (const groupId of Object.keys(this.groups)) {
       const botId = this.groups[groupId]
+      let store = await getStore()
       const bot = store.getBot(botId)
       await bot.sendMessage(
         groupId,
@@ -285,43 +333,5 @@ export const User = new SubX({
     }
   }
 })
-
-// load data from database
-let store
-export const getStore = async () => {
-  if (store) {
-    return store
-  }
-  // load database from S3
-  const database = await read()
-  store = new Store(database)
-
-  // init bots
-  for (const k of R.keys(store.bots)) {
-    const bot = new Bot(store.bots[k])
-    if (await bot.validate()) {
-      store.bots[k] = bot
-      await bot.renewWebHooks()
-    }
-  }
-
-  // init users
-  for (const k of R.keys(store.users)) {
-    const user = new User(store.users[k])
-    if (await user.validate()) {
-      store.users[k] = user
-      await user.renewWebHooks()
-      await user.refresh()
-    }
-  }
-
-  store.lastInitTime = + new Date()
-  // auto save to database
-  SubX.autoRun(store, async () => {
-    await write(store)
-  }, debounceTime(1000))
-
-  return store
-}
 
 getStore()

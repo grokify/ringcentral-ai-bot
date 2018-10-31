@@ -59,6 +59,8 @@ export const Bot = new SubX({
     this.token = this.rc.token()
   },
   async setupWebHook () {
+    let r = await this.rc.get('/restapi/v1.0/account/~/extension/~')
+    console.log(r.data)
     try {
       await this.rc.post('/restapi/v1.0/subscription', {
         eventFilters: botEventFilters(),

@@ -7,6 +7,7 @@ import { read, write } from './database'
 import resultFormatter from './analysis-formatter'
 import {log} from './log'
 import {subscribeInterval, expiresIn} from '../common/constants'
+import wait from '../common/wait'
 
 const botEventFilters = () => [
   '/restapi/v1.0/glip/posts',
@@ -46,7 +47,7 @@ export const getStore = async () => {
   // load database from S3
   const database = await read()
   let store = new Store(database)
-  let throttle = 30 * 60 * 1000
+  let throttle = expiresIn() / 2
 
   // init bots
   for (const k of R.keys(store.bots)) {
@@ -65,8 +66,7 @@ export const getStore = async () => {
     store.users[k] = user
     let now = + new Date()
     if (now - user.lastRenewTime > throttle) {
-      await user.refresh()
-      await user.renewWebHooks()
+      await user.renew()
     }
   }
 
@@ -197,6 +197,12 @@ export const User = new SubX({
       log('User authorize error', e.response.data)
     }
     this.token = this.rc.token()
+  },
+  async renew() {
+    await this.refresh()
+    //wait for db write
+    await wait(700)
+    await this.renewWebHooks()
   },
   async refresh () {
     try {
